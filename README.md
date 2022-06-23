@@ -1,5 +1,6 @@
 # tasks_management
 - Author: Allen Christian Tubo
+
 A new Tasks Management Flutter project.
 
 ## Getting Started

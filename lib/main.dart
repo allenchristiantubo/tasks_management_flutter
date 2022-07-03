@@ -1,19 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:tasks_management/screens/dashboard_screen.dart';
-import 'package:tasks_management/screens/tasks_screen.dart';
 import 'package:tasks_management/shared/menu_bottom.dart';
 
-class Task{
-  String taskId;
-  String taskName;
-  String taskDescription;
-  int status;
-  DateTime dateCreated;
-
-  Task(this.taskId, this.taskName, this.taskDescription, this.status, this.dateCreated);
+class MyHttpOverrides extends HttpOverrides{
+  @override
+  HttpClient createHttpClient(SecurityContext? context){
+    return super.createHttpClient(context)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port)=> true;
+  }
 }
 
-void main() => runApp(MyApp());
+void main (){
+  runApp(const MyApp());
+  HttpOverrides.global = MyHttpOverrides();
+}
 
 class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
@@ -23,7 +24,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       theme: ThemeData(primarySwatch:Colors.deepPurple),
       debugShowCheckedModeBanner: false,
-      home: MenuBottom(),
+      home: MenuBottom(0),
     );
   }
 }

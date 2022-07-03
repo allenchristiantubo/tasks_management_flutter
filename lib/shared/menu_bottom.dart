@@ -4,14 +4,16 @@ import 'package:tasks_management/screens/tasks_add_screen.dart';
 import 'package:tasks_management/screens/tasks_screen.dart';
 
 class MenuBottom extends StatefulWidget {
-  const MenuBottom({Key? key}) : super(key: key);
-
+  MenuBottom(this.selectedIndex, {Key? key}) : super(key: key);
+  int selectedIndex = 0;
   @override
   State<MenuBottom> createState() => _MenuBottomState();
 }
 
 class _MenuBottomState extends State<MenuBottom> {
-  int selectedIndex = 0;
+  @override
+  // TODO: implement widget
+  MenuBottom get widget => super.widget;
   Color _dashboardColor = Colors.white;
   Color _tasksColor = Colors.grey;
   static const List<Widget> _children = [
@@ -22,20 +24,23 @@ class _MenuBottomState extends State<MenuBottom> {
 
   void onTapped(int index){
     setState((){
-      selectedIndex = index;
+      widget.selectedIndex = index;
       if(index == 0){
         _dashboardColor = Colors.white;
         _tasksColor = Colors.grey;
       }else if(index == 1){
         _dashboardColor = Colors.grey;
         _tasksColor = Colors.white;
+      }else{
+        _dashboardColor = Colors.grey;
+        _tasksColor = Colors.grey;
       }
     });
   }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        body:_children[selectedIndex],
+        body:_children[widget.selectedIndex],
         bottomNavigationBar: BottomAppBar(
           shape: const CircularNotchedRectangle(),
           color: Colors.deepPurple,
@@ -65,10 +70,9 @@ class _MenuBottomState extends State<MenuBottom> {
         floatingActionButton: FloatingActionButton(
           tooltip: 'Create Task',
           onPressed: (){
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const AddTaskScreen()),
-            );
+            //Navigator.pop(context);
+            //Navigator.push(context, MaterialPageRoute(builder: (context) => MenuBottom(2)));
+            onTapped(2);
           },
           child: const Icon(Icons.add),
         ),

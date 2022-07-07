@@ -8,7 +8,7 @@ class Task{
   String taskDescription = "";
   String? dateCreated = "";
   String? dateModified = "";
-  String? dateFinished = "";
+  String? dateFinished;
   int status = 0;
   List<Tag>? tag = [];
 
@@ -52,6 +52,10 @@ class Task{
     data['taskName'] = taskName;
     data['taskDescription'] = taskDescription;
 
+    if(tag != null){
+      data['tag'] = tag!.map((value) => value.toJson()).toList();
+    }
+
     if(dateCreated != null){
       data['dateCreated'] = dateCreated;
     }
@@ -66,10 +70,21 @@ class Task{
 
     data['status'] = status;
 
-    if(tag != null){
-      data['tag'] = tag!.map((value) => value.toJson()).toList();
-    }
     return data;
+  }
+
+  Task.fromLocalJson(Map<String, dynamic> data){
+    taskId = data['taskId'];
+    taskName = data['taskName'];
+    taskDescription = data['taskDescription'];
+    dateCreated = data['dateCreated'];
+    dateModified = data['dateModified'];
+
+    if(data['dateFinished'] != null){
+      dateFinished = data['dateFinished'];
+    }
+
+    status = data['status'];
   }
 
   Map<String, dynamic> toLocalJson(){
@@ -120,11 +135,11 @@ class Tag{
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
     if(tagId != null){
-      data['tagId'] = tagId;
+      data['tagId'] = tagId.toString();
     }
-    data['tagName'] = tagName;
+    data['tagName'] = tagName.toString();
     if(taskId != null){
-      data['taskId'] = taskId;
+      data['taskId'] = taskId.toString();
     }
     return data;
   }

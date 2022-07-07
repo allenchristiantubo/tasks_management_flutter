@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
-import 'package:tasks_management/data/repository/local/tasks_repository.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:tasks_management/data/repository/local/local_tasks_repository.dart';
 import 'package:tasks_management/screens/search_screen.dart';
+import 'package:tasks_management/screens/tasks_add_screen.dart';
 import 'package:tasks_management/screens/tasks_edit_screen.dart';
-import 'package:tasks_management/shared/menu_bottom.dart';
+import '../data/services/database_helper.dart';
 import '../model/task_model.dart';
-import '../data/repository/API/tasks_repository.dart';
+import '../data/repository/API/api_tasks_repository.dart';
 
 class TasksScreen extends StatefulWidget {
   const TasksScreen({Key? key}) : super(key: key);
@@ -22,30 +25,40 @@ class _TasksScreenState extends State<TasksScreen> {
   Icon _iconShowCompleted = const Icon(Icons.keyboard_arrow_right);
   Icon _iconShowNew = const Icon(Icons.keyboard_arrow_right);
   Icon _iconShowInProgress = const Icon(Icons.keyboard_arrow_right);
-  bool isLoaded = false;
   List<Task>? tasks = [];
   List<Task> newTasks = [];
   List<Task> inProgressTasks = [];
   List<Task> finishedTasks = [];
   bool isInProgressTasksEmpty = true;
   bool isNewTasksEmpty = true;
-  late MenuBottom menuBottom;
+  int newTasksCount = 0;
+  int inProgressTasksCount = 0;
+  int finishedTasksCount = 0;
+  late Database database;
+  APITasksRepository api = APITasksRepository();
+  late LocalTasksRepository local;
 
   @override
   void initState(){
     super.initState();
     getAllTasks();
+    initializeDateFormatting();
   }
 
   Future getAllTasks() async {
-    //API
-    tasks = await TasksRepository().getAllTasks();
+    //Local Storage
+    database = await DatabaseHelper.getInstance();
+    local =  LocalTasksRepository(database);
+    tasks = await local.getAllTasks();
+    // tasks = await api.getAllTasks();
     if (tasks != null) {
       setState(() {
-        isLoaded = true;
         newTasks = tasks!.where((task) => task.status == 0).toList();
         inProgressTasks = tasks!.where((task) => task.status == 1).toList();
         finishedTasks = tasks!.where((task) => task.status == 2).toList();
+        newTasksCount = getNewTasksCount();
+        inProgressTasksCount = getInProgressTasksCount();
+        finishedTasksCount = getFinishedTasksCount();
       });
     }
   }
@@ -75,19 +88,22 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future deleteTask(String id) async {
-    bool deleted = await TasksRepository().deleteTask(id);
+    database = await DatabaseHelper.getInstance();
+    local =  LocalTasksRepository(database);
+    bool deleted = await api.deleteTask(id);
     if(deleted){
+      await local.delete(id);
       getAllTasks();
     }
-    //await TaskRepository().delete(id);
-
   }
 
-  Future updateStatus(String taskId, int status) async {
-   Task? task = await TasksRepository().updateStatus(taskId, status);
-   if(task != null){
-     getAllTasks();
-   }
+  Future<Task> updateStatus(String taskId, int status) async {
+    database = await DatabaseHelper.getInstance();
+    local =  LocalTasksRepository(database);
+    Task task = await api.updateStatus(taskId, status);
+    await local.updateTaskStatus(taskId, status);
+    getAllTasks();
+    return task;
   }
 
   @override
@@ -164,7 +180,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                   child: ListView.builder(
                                       physics: const NeverScrollableScrollPhysics(),
                                       shrinkWrap: true,
-                                      itemCount: getInProgressTasksCount(),
+                                      itemCount: inProgressTasksCount,
                                       itemBuilder: (BuildContext context, int index){
                                         if(inProgressTasks.isNotEmpty && _showInProgress){
                                           final Task task = inProgressTasks[index];
@@ -179,8 +195,8 @@ class _TasksScreenState extends State<TasksScreen> {
                                                       motion: const BehindMotion(),
                                                       children: [
                                                         SlidableAction(
-                                                          onPressed: (_){
-                                                            updateStatus(task.taskId!, 0);
+                                                          onPressed: (_) async{
+                                                            Task returnedTask = await updateStatus(task.taskId!, 0);
                                                           },
                                                           backgroundColor: const Color.fromRGBO(224, 234, 243, 1),
                                                           foregroundColor: Colors.deepPurple,
@@ -202,6 +218,9 @@ class _TasksScreenState extends State<TasksScreen> {
                                                                 TextButton(
                                                                   onPressed: (){
                                                                     deleteTask(task.taskId!);
+                                                                    setState((){
+                                                                      getAllTasks();
+                                                                    });
                                                                     Navigator.pop(context);
                                                                   },
                                                                   child: const Text('Yes'),
@@ -222,25 +241,21 @@ class _TasksScreenState extends State<TasksScreen> {
                                                     ),
                                                     child: GestureDetector(
                                                       onTap: () async {
-                                                        String? result = await Navigator.push(context,  MaterialPageRoute(builder: (context) => EditTaskScreen(task: task)));
-                                                        if(result != null){
+                                                        Task returnedTask = await Navigator.push(context,  MaterialPageRoute(builder: (context) => EditTaskScreen(task: task)));
+                                                        setState((){
                                                           getAllTasks();
-                                                          ScaffoldMessenger.of(context)
-                                                            ..removeCurrentSnackBar()
-                                                            ..showSnackBar(SnackBar(content: Text(result)));
-                                                        }
+                                                        });
                                                       },
                                                       child: ListTile(
                                                         leading: IconButton(
                                                             iconSize: 28,
-                                                            onPressed: () {
-                                                              updateStatus(task.taskId!, 2);
+                                                            onPressed: () async {
+                                                              Task returnedTask = await updateStatus(task.taskId!, 2);
                                                             },
                                                             icon: const Icon(Icons.check_circle_outlined, color: Colors.white),
                                                             tooltip: 'Mark as completed'
                                                         ),
                                                         title: Text(task.taskName, style: const TextStyle(color: Colors.white)),
-                                                        subtitle: Text("Modified: ${DateFormat.yMMMMd().format(DateTime.parse(task.dateModified.toString()))}", style: const TextStyle(color: Colors.white60)),
                                                       ),
                                                     ),
                                                 ),
@@ -282,7 +297,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                   child: ListView.builder(
                                       physics: const NeverScrollableScrollPhysics(),
                                       shrinkWrap: true,
-                                      itemCount: getNewTasksCount(),
+                                      itemCount: newTasksCount,
                                       itemBuilder: (BuildContext context, int index){
                                         if(newTasks.isNotEmpty && _showNew){
                                           final Task task = newTasks[index];
@@ -297,8 +312,8 @@ class _TasksScreenState extends State<TasksScreen> {
                                                     motion: const BehindMotion(),
                                                     children: [
                                                       SlidableAction(
-                                                        onPressed: (_){
-                                                          updateStatus(task.taskId!, 1);
+                                                        onPressed: (_) async {
+                                                          Task returnedTask = await updateStatus(task.taskId!, 1);
                                                         },
                                                         backgroundColor: const Color.fromRGBO(159, 131, 207, 1),
                                                         foregroundColor: Colors.white,
@@ -339,17 +354,22 @@ class _TasksScreenState extends State<TasksScreen> {
                                                     ],
                                                   ),
                                                   child: GestureDetector(
+                                                    onTap: () async {
+                                                      Task? returnedTask = await Navigator.push(context,  MaterialPageRoute(builder: (context) => EditTaskScreen(task: task)));
+                                                      setState((){
+                                                        getAllTasks();
+                                                      });
+                                                    },
                                                     child: ListTile(
                                                       leading: IconButton(
                                                           iconSize: 28,
-                                                          onPressed: () {
-                                                            updateStatus(task.taskId!, 2);
+                                                          onPressed: () async {
+                                                            Task returnedTask = await updateStatus(task.taskId!, 2);
                                                           },
                                                           icon: const Icon(Icons.check_circle_outlined, color: Colors.deepPurple),
                                                           tooltip: 'Mark as completed'
                                                       ),
                                                       title: Text(task.taskName, style: const TextStyle(color: Colors.deepPurple)),
-                                                      subtitle: Text("Created: ${DateFormat.yMMMMd().format(DateTime.parse(task.dateCreated.toString()))}", style: const TextStyle(color: Colors.deepPurple)),
                                                     ),
                                                   ),
                                                 ),
@@ -391,7 +411,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                   child: ListView.builder(
                                       physics: const NeverScrollableScrollPhysics(),
                                       shrinkWrap: true,
-                                      itemCount: getFinishedTasksCount(),
+                                      itemCount: finishedTasksCount,
                                       itemBuilder: (BuildContext context, int index){
                                         if(finishedTasks.isNotEmpty && _showCompleted){
                                           final Task task = finishedTasks[index];
@@ -406,14 +426,14 @@ class _TasksScreenState extends State<TasksScreen> {
                                                       child: ListTile(
                                                         leading: IconButton(
                                                           iconSize: 28,
-                                                          onPressed: () {
-                                                          updateStatus(task.taskId!, 1);
+                                                          onPressed: () async {
+                                                          Task returnedTask = await updateStatus(task.taskId!, 1);
                                                           },
                                                           icon: const Icon(Icons.check_circle, color: Colors.white),
                                                           tooltip: 'Mark as in progress'
                                                         ),
                                                         title: Text(task.taskName, style: const TextStyle(color: Colors.white,decoration: TextDecoration.lineThrough)),
-                                                        subtitle: Text("Completed: ${task.dateFinished}", style: const TextStyle(color: Colors.white60)),
+                                                        subtitle: Text("Completed: ${task.dateFinished.toString()}", style: const TextStyle(color: Colors.white60)),
                                                       ),
                                                     )
                                                 ),
@@ -430,18 +450,318 @@ class _TasksScreenState extends State<TasksScreen> {
                               ]
                             ),
                           ),
-
                         ],
                       ),
                     ),
                   )
                 ],
               ),
-              const Visibility(child: SizedBox()),
-              const Visibility(child: SizedBox()),
-              const Visibility(child: SizedBox())
+              //New Tasks
+              Column(
+                children: [
+                  Expanded(child:
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5),
+                      child: ListView(
+                        scrollDirection: Axis.vertical,
+                        children: [
+                          SizedBox(
+                            child: Column(
+                              children: [
+                                SizedBox(
+                                  child: ListView.builder(
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      shrinkWrap: true,
+                                      itemCount: getNewTasksCount(),
+                                      itemBuilder: (BuildContext context, int index){
+                                        if(newTasks.isNotEmpty){
+                                          final Task task = newTasks[index];
+                                          return Column(
+                                            children: [
+                                              Container(
+                                                decoration: const BoxDecoration(
+                                                    color: Color.fromRGBO(224, 234, 243, 1)
+                                                ),
+                                                child: Slidable(
+                                                  startActionPane: ActionPane(
+                                                    motion: const BehindMotion(),
+                                                    children: [
+                                                      SlidableAction(
+                                                        onPressed: (_){
+                                                          updateStatus(task.taskId!, 1);
+                                                        },
+                                                        backgroundColor: const Color.fromRGBO(159, 131, 207, 1),
+                                                        foregroundColor: Colors.white,
+                                                        icon: Icons.timer_outlined,
+                                                        label: 'Mark as In Progress',
+                                                      )
+                                                    ],
+                                                  ),
+                                                  endActionPane: ActionPane(
+                                                    motion: const BehindMotion(),
+                                                    children: [
+                                                      SlidableAction(
+                                                        onPressed: (_) => showDialog(
+                                                          context: context,
+                                                          builder: (BuildContext context) => AlertDialog(
+                                                            title: const Text('Confirmation!'),
+                                                            content: const Text('Are you sure to delete this task permanently?'),
+                                                            actions: [
+                                                              TextButton(
+                                                                onPressed: (){
+                                                                  deleteTask(task.taskId!);
+                                                                  setState((){
+                                                                    newTasks.remove(task);
+                                                                  });
+                                                                  Navigator.pop(context);
+                                                                },
+                                                                child: const Text('Yes'),
+                                                              ),
+                                                              TextButton(
+                                                                onPressed: () => Navigator.pop(context),
+                                                                child: const Text('No'),
+                                                              )
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        backgroundColor: const Color.fromRGBO(248, 89, 124, 1),
+                                                        foregroundColor: Colors.white,
+                                                        icon: Icons.delete_outline,
+                                                        label: 'Delete',
+                                                      )
+                                                    ],
+                                                  ),
+                                                  child: GestureDetector(
+                                                    onTap: () async {
+                                                      Task returnedTask = await Navigator.push(context,  MaterialPageRoute(builder: (context) => EditTaskScreen(task: task)));
+                                                      setState((){
+                                                        getAllTasks();
+                                                      });
+                                                    },
+                                                    child: ListTile(
+                                                      leading: IconButton(
+                                                          iconSize: 28,
+                                                          onPressed: () async{
+                                                            Task returnedTask = await updateStatus(task.taskId!, 2);
+                                                          },
+                                                          icon: const Icon(Icons.check_circle_outlined, color: Colors.deepPurple),
+                                                          tooltip: 'Mark as completed'
+                                                      ),
+                                                      title: Text(task.taskName, style: const TextStyle(color: Colors.deepPurple)),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              const Divider()
+                                            ],
+                                          );
+                                        }else{
+                                          return const SizedBox.shrink();
+                                        }
+                                      }
+                                  ),
+                                )
+                              ],
+                            ),
+                          )
+                        ],
+                      ),
+                    )
+                  )
+                ],
+              ),
+              //End of New Tasks
+              //In Progress Tasks
+              Column(
+                children: [
+                  Expanded(child:
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5),
+                    child: ListView(
+                      scrollDirection: Axis.vertical,
+                      children: [
+                        SizedBox(
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                child: ListView.builder(
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    shrinkWrap: true,
+                                    itemCount: inProgressTasksCount,
+                                    itemBuilder: (BuildContext context, int index){
+                                      if(inProgressTasks.isNotEmpty){
+                                        final Task task = inProgressTasks[index];
+                                        return Column(
+                                          children: [
+                                            Container(
+                                              decoration: const BoxDecoration(
+                                                  color: Color.fromRGBO(159, 131, 207, 1)
+                                              ),
+                                              child: Slidable(
+                                                startActionPane: ActionPane(
+                                                  motion: const BehindMotion(),
+                                                  children: [
+                                                    SlidableAction(
+                                                      onPressed: (_){
+                                                        updateStatus(task.taskId!, 0);
+                                                      },
+                                                      backgroundColor: const Color.fromRGBO(224, 234, 243, 1),
+                                                      foregroundColor: Colors.deepPurple,
+                                                      icon: Icons.new_releases_outlined,
+                                                      label: 'Mark as New',
+                                                    )
+                                                  ],
+                                                ),
+                                                endActionPane: ActionPane(
+                                                  motion: const BehindMotion(),
+                                                  children: [
+                                                    SlidableAction(
+                                                      onPressed: (_) => showDialog(
+                                                          context: context,
+                                                          builder: (BuildContext context) => AlertDialog(
+                                                            title: const Text('Confirmation!'),
+                                                            content: const Text('Are you sure to delete this task permanently?'),
+                                                            actions: [
+                                                              TextButton(
+                                                                onPressed: (){
+                                                                  deleteTask(task.taskId!);
+                                                                  Navigator.pop(context);
+                                                                },
+                                                                child: const Text('Yes'),
+                                                              ),
+                                                              TextButton(
+                                                                onPressed: () => Navigator.pop(context),
+                                                                child: const Text('No'),
+                                                              )
+                                                            ],
+                                                          )
+                                                      ),
+                                                      backgroundColor: const Color.fromRGBO(248, 89, 124, 1),
+                                                      foregroundColor: Colors.white,
+                                                      icon: Icons.delete_outline,
+                                                      label: 'Delete',
+                                                    )
+                                                  ],
+                                                ),
+                                                child: GestureDetector(
+                                                  onTap: () async {
+                                                    Task returnedTask = await Navigator.push(context,  MaterialPageRoute(builder: (context) => EditTaskScreen(task: task)));
+                                                    setState((){
+                                                      getAllTasks();
+                                                    });
+                                                  },
+                                                  child: ListTile(
+                                                    leading: IconButton(
+                                                        iconSize: 28,
+                                                        onPressed: () async {
+                                                          Task returnedTask = await updateStatus(task.taskId!, 2);
+                                                        },
+                                                        icon: const Icon(Icons.check_circle_outlined, color: Colors.white),
+                                                        tooltip: 'Mark as completed'
+                                                    ),
+                                                    title: Text(task.taskName, style: const TextStyle(color: Colors.white)),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            const Divider()
+                                          ],
+                                        );
+                                      }else{
+                                        return const SizedBox.shrink();
+                                      }
+                                    }
+                                ),
+                              )
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                  )
+                  )
+                ],
+              ),
+              //End of In Progress Tasks
+              //Finished Tasks
+              Column(
+                children: [
+                  Expanded(child:
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5),
+                    child: ListView(
+                      scrollDirection: Axis.vertical,
+                      children: [
+                        SizedBox(
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                child: ListView.builder(
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    shrinkWrap: true,
+                                    itemCount: finishedTasksCount,
+                                    itemBuilder: (BuildContext context, int index){
+                                      if(finishedTasks.isNotEmpty){
+                                        final Task task = finishedTasks[index];
+                                        return Column(
+                                          children: [
+                                            Container(
+                                              decoration: const BoxDecoration(
+                                                  color: Color.fromRGBO(123, 78, 203, 1)
+                                              ),
+                                              child: Slidable(
+                                                  child: GestureDetector(
+                                                    child: ListTile(
+                                                      leading: IconButton(
+                                                          iconSize: 28,
+                                                          onPressed: () async {
+                                                            Task returnedTask = await updateStatus(task.taskId!, 1);
+                                                          },
+                                                          icon: const Icon(Icons.check_circle, color: Colors.white),
+                                                          tooltip: 'Mark as in progress'
+                                                      ),
+                                                      title: Text(task.taskName, style: const TextStyle(color: Colors.white,decoration: TextDecoration.lineThrough)),
+                                                    ),
+                                                  )
+                                              ),
+                                            ),
+                                            const Divider()
+                                          ],
+                                        );
+                                      }else{
+                                        return const SizedBox.shrink();
+                                      }
+                                    }
+                                ),
+                              )
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                  )
+                  )
+                ],
+              ),
+              //End of Finished Tasks
           ]
           ),
+          floatingActionButton: FloatingActionButton(
+            tooltip: 'Create Task',
+            onPressed: () async{
+              Task? returnedTask = await Navigator.push(context, MaterialPageRoute(builder: (context) => const AddTaskScreen()));
+              if(returnedTask != null){
+                setState((){
+                  getAllTasks();
+                  ScaffoldMessenger.of(context)
+                    ..removeCurrentSnackBar()
+                    ..showSnackBar(const SnackBar(content: Text('Task created successfully.')));
+                });
+              }
+            },
+            child: const Icon(Icons.add),
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           ),
       ),
     );

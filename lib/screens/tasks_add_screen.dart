@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
-import '../data/repository/API/tasks_repository.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:tasks_management/data/services/database_helper.dart';
+import 'package:tasks_management/utils/validator.dart';
+import '../data/repository/API/api_tasks_repository.dart';
+import '../data/repository/local/local_tasks_repository.dart';
 import '../model/task_model.dart';
 import '../shared/menu_bottom.dart';
 
@@ -20,15 +24,31 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   bool _validateTitle = false;
   bool _validateDescription = false;
 
-  TasksRepository api = TasksRepository();
+  late Database _database;
+  APITasksRepository api = APITasksRepository();
+  late LocalTasksRepository local;
 
   //Insert into Web API
   //After inserting into API, will return the task created
   //pass it to store on local storage
-  createTask(String taskName, String taskDescription, List<Tag> tags) async{
+  Future<Task?> createTask(String taskName, String taskDescription, List<Tag> tags) async{
+    _database = await DatabaseHelper.getInstance();
+    local = LocalTasksRepository(_database);
     Task newTask = Task(taskName: taskName, taskDescription: taskDescription, tag: tags, status: 0);
-    Task taskCreated = await api.createTask(newTask);
-    //var result = await TaskRepository().create(taskCreated);
+    Task? taskCreated = await api.createTask(newTask);
+    if(taskCreated != null){
+      var result = await local.create(taskCreated);
+      if(result != null){
+        return taskCreated;
+      }
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    // TODO: implement initState
+    super.initState();
   }
 
   @override
@@ -48,23 +68,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             Padding(
                 padding: const EdgeInsets.only(right: 20.0),
                 child: GestureDetector(
-                  onTap: () {
+                  onTap: () async {
                     var taskName = _titleController.text;
                     var taskDescription = _descriptionController.text;
-                    createTask(taskName, taskDescription, tags);
-                    final snackBar = SnackBar(
-                      content: const Text('Task created successfully.'),
-                      action: SnackBarAction(
-                        label: 'Close',
-                        onPressed: () {
-                          // Some code to undo the change.
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                        },
-                      ),
-                    );
-                    ScaffoldMessenger.of(context).showSnackBar(snackBar);
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => MenuBottom(0)));
+                    Task? returnedTask = await createTask(taskName, taskDescription, tags);
+                    if(returnedTask != null){
+                      if(!mounted) return;
+                      Navigator.pop(context, returnedTask);
+                    }
                   },
                   child: const Icon(Icons.check, size: 28.0,),
                 )
@@ -96,10 +107,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         textInputAction: TextInputAction.done,
                         onChanged: (value){
                           setState((){
-                            if(value.isNotEmpty){
-                              _validateTitle = true;
-                            }else{
-                              _validateTitle = false;
+                            value.isEmpty ? _validateTitle = false : _validateTitle = true;
+                          });
+                        },
+                        onSubmitted: (value){
+                          setState((){
+                            var result = TaskValidator().validateTaskName(value);
+                            if(result != null){
+                              ScaffoldMessenger.of(context)
+                                ..removeCurrentSnackBar()
+                                ..showSnackBar(SnackBar(content: Text(result)));
                             }
                           });
                         },
@@ -124,10 +141,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         keyboardType: TextInputType.multiline,
                         onChanged: (value){
                           setState((){
-                            if(value.isNotEmpty){
-                              _validateDescription = true;
-                            }else{
-                              _validateDescription = false;
+                            value.isEmpty ? _validateDescription = false : _validateDescription = true;
+                          });
+                        },
+                        onSubmitted: (value){
+                          setState((){
+                            var result = TaskValidator().validateTaskDescription(value);
+                            if(result != null){
+                              ScaffoldMessenger.of(context)
+                                  ..removeCurrentSnackBar()
+                                  ..showSnackBar(SnackBar(content: Text(result)));
                             }
                           });
                         },

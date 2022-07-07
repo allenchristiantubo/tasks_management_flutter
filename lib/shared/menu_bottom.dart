@@ -67,16 +67,6 @@ class _MenuBottomState extends State<MenuBottom> {
             ),
           ),
         ),
-        floatingActionButton: FloatingActionButton(
-          tooltip: 'Create Task',
-          onPressed: (){
-            //Navigator.pop(context);
-            //Navigator.push(context, MaterialPageRoute(builder: (context) => MenuBottom(2)));
-            onTapped(2);
-          },
-          child: const Icon(Icons.add),
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 }

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:tasks_management/data/repository/local/local_tasks_repository.dart';
+import '../data/services/database_helper.dart';
 import '../model/task_model.dart';
 import '../shared/menu_bottom.dart';
-import '../data/repository/API/tasks_repository.dart';
+import '../data/repository/API/api_tasks_repository.dart';
+import '../utils/validator.dart';
 
 class EditTaskScreen extends StatefulWidget {
   const EditTaskScreen({super.key, required this.task});
@@ -22,7 +26,9 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
   String statusValue = "";
   bool _validateTitle = false;
   bool _validateDescription = false;
-  TasksRepository api = TasksRepository();
+  late Database _database;
+  APITasksRepository api = APITasksRepository();
+  late LocalTasksRepository local;
 
   @override
   // TODO: implement widget
@@ -49,18 +55,22 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
     tagsCount = tags.length;
   }
 
-  // @override
-  // void dispose() {
-  //   // TODO: implement dispose
-  //   _titleController.dispose();
-  //   _descriptionController.dispose();
-  //   _tagsController.dispose();
-  //   super.dispose();
-  // }
+  @override
+  void dispose() {
+    // TODO: implement dispose
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _tagsController.dispose();
+    super.dispose();
+  }
 
-  updateTask(String taskId, String taskName, String taskDescription, int status, List<Tag> tags) async{
+  Future<Task> updateTask(String taskId, String taskName, String taskDescription, int status, List<Tag> tags) async{
+    _database = await DatabaseHelper.getInstance();
+    local = LocalTasksRepository(_database);
     Task taskToUpdate = Task(taskId: taskId, taskName: taskName, taskDescription: taskDescription, status: status, tag: tags);
     Task returnedTask = await api.updateTask(taskToUpdate);
+    await local.update(returnedTask);
+    return returnedTask;
   }
 
   @override
@@ -73,12 +83,13 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
               Padding(
                   padding: const EdgeInsets.only(right: 20.0),
                   child: GestureDetector(
-                    onTap: () {
+                    onTap: () async {
                       String taskName = _titleController.text;
                       String taskDescription = _descriptionController.text;
                       int status = (statusValue == 'New' ? 0 : statusValue == 'In Progress' ? 1 : 2);
-                      updateTask(task.taskId.toString(), taskName, taskDescription, status, tags);
-                      Navigator.pop(context, "Task updated successfully.");
+                      Task returnedTask = await updateTask(task.taskId.toString(), taskName, taskDescription, status, tags);
+                      if(!mounted) return;
+                      Navigator.pop(context, returnedTask);
                     },
                     child: const Icon(Icons.check, size: 28.0,),
                   )
@@ -110,10 +121,16 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                           textInputAction: TextInputAction.done,
                           onChanged: (value){
                             setState((){
-                              if(value.isNotEmpty){
-                                _validateTitle = true;
-                              }else{
-                                _validateTitle = false;
+                              value.isEmpty ? _validateTitle = false : _validateTitle = true;
+                            });
+                          },
+                          onSubmitted: (value){
+                            setState((){
+                              var result = TaskValidator().validateTaskName(value);
+                              if(result != null){
+                                ScaffoldMessenger.of(context)
+                                  ..removeCurrentSnackBar()
+                                  ..showSnackBar(SnackBar(content: Text(result)));
                               }
                             });
                           },
@@ -138,10 +155,16 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                           keyboardType: TextInputType.multiline,
                           onChanged: (value){
                             setState((){
-                              if(value.isNotEmpty){
-                                _validateDescription = true;
-                              }else{
-                                _validateDescription = false;
+                              value.isEmpty ? _validateDescription = false : _validateDescription = true;
+                            });
+                          },
+                          onSubmitted: (value){
+                            setState((){
+                              var result = TaskValidator().validateTaskDescription(value);
+                              if(result != null){
+                                ScaffoldMessenger.of(context)
+                                  ..removeCurrentSnackBar()
+                                  ..showSnackBar(SnackBar(content: Text(result)));
                               }
                             });
                           },
